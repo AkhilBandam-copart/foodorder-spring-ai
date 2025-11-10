@@ -21,16 +21,29 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-package com.foodorder.ai;
 
-import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.scheduling.annotation.EnableScheduling;
+package com.foodorder.ai.repository;
 
-@SpringBootApplication
-@EnableScheduling
-public class FoodOrderAiApplication {
-    public static void main(String[] args) {
-        SpringApplication.run(FoodOrderAiApplication.class, args);
-    }
+import com.foodorder.ai.model.UserItemInteraction;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+
+@Repository
+public interface InteractionRepository extends JpaRepository<UserItemInteraction, Long> {
+    
+    List<UserItemInteraction> findByUserId(String userId);
+    
+    List<UserItemInteraction> findByFoodItemId(Long foodItemId);
+    
+    @Query("SELECT COUNT(i) FROM UserItemInteraction i WHERE i.userId = :userId AND i.interactionType = 'ORDER'")
+    Long countOrdersByUserId(String userId);
+    
+    @Query("SELECT DISTINCT i.userId FROM UserItemInteraction i")
+    List<String> findAllDistinctUserIds();
+    
+    @Query("SELECT DISTINCT i.foodItemId FROM UserItemInteraction i")
+    List<Long> findAllDistinctFoodItemIds();
 }

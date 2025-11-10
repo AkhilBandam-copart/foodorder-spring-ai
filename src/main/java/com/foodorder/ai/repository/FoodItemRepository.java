@@ -41,12 +41,16 @@ public class FoodItemRepository {
     }
 
     private void initializeDefaultItems() {
-        save(new FoodItem(null, "Ham Burger", "Classic ham burger with fresh vegetables", 120.23, 23, "Burger", false, false, new String[]{"gluten", "dairy"}));
-        save(new FoodItem(null, "Cheese Burger", "Delicious cheese burger with melted cheese", 100.67, 13, "Burger", false, false, new String[]{"gluten", "dairy"}));
-        save(new FoodItem(null, "Sandwich", "Fresh vegetable sandwich", 720.83, 8, "Sandwich", true, true, new String[]{"gluten"}));
-        save(new FoodItem(null, "KFC Wings", "Crispy fried chicken wings", 70.23, 46, "Chicken", false, false, new String[]{"gluten"}));
-        save(new FoodItem(null, "Chicken Pizza", "Large chicken pizza with toppings", 70.23, 46, "Pizza", false, false, new String[]{"gluten", "dairy"}));
-        save(new FoodItem(null, "French Fries", "Crispy golden french fries", 60.23, 34, "Sides", true, true, new String[]{}));
+        save(new FoodItem(null, "Ham Burger", "Classic ham burger with fresh vegetables", 12.99, 23, "American", false, false, new String[]{"gluten", "dairy"}));
+        save(new FoodItem(null, "Cheese Burger", "Delicious cheese burger with melted cheese", 10.99, 13, "American", false, false, new String[]{"gluten", "dairy"}));
+        save(new FoodItem(null, "Veggie Sandwich", "Fresh vegetable sandwich", 7.99, 8, "American", true, true, new String[]{"gluten"}));
+        save(new FoodItem(null, "KFC Wings", "Crispy fried chicken wings", 8.99, 46, "American", false, false, new String[]{"gluten"}));
+        save(new FoodItem(null, "Margherita Pizza", "Classic pizza with tomato and mozzarella", 14.99, 30, "Italian", true, false, new String[]{"gluten", "dairy"}));
+        save(new FoodItem(null, "Pasta Primavera", "Vegetarian pasta with seasonal vegetables", 13.99, 25, "Italian", true, false, new String[]{"gluten", "dairy"}));
+        save(new FoodItem(null, "French Fries", "Crispy golden french fries", 4.99, 34, "American", true, true, new String[]{}));
+        save(new FoodItem(null, "Caesar Salad", "Fresh romaine with parmesan and croutons", 9.99, 20, "American", true, false, new String[]{"gluten", "dairy"}));
+        save(new FoodItem(null, "Veggie Burger", "Plant-based burger with fresh toppings", 11.99, 15, "American", true, false, new String[]{"gluten"}));
+        save(new FoodItem(null, "Caprese Salad", "Tomato, mozzarella, and basil", 10.99, 18, "Italian", true, false, new String[]{"dairy"}));
     }
 
     public FoodItem save(FoodItem foodItem) {

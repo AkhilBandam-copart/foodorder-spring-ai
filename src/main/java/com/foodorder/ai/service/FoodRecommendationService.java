@@ -52,14 +52,44 @@ public class FoodRecommendationService {
     @Autowired
     private FoodItemRepository foodItemRepository;
 
+    @Autowired
+    private GeminiService geminiService;
+
+    @Autowired
+    private MLRecommendationService mlService;
+
     public RecommendationResponse getRecommendations(RecommendationRequest request) {
         UserPreferences prefs = request.getUserPreferences();
         List<FoodItem> availableItems = foodItemRepository.findAll();
+        
+        String userId = prefs.getUserId();
+        
+        if (userId != null && mlService.hasEnoughData(userId)) {
+            System.out.println("Using ML recommendations for user: " + userId);
+            List<FoodItem> mlRecs = mlService.recommend(userId, 5);
+            System.out.println("ML returned " + (mlRecs != null ? mlRecs.size() : 0) + " recommendations");
+            
+            if (mlRecs != null && !mlRecs.isEmpty()) {
+                mlRecs = applyUserFilters(mlRecs, prefs);
+                System.out.println("After filtering: " + mlRecs.size() + " recommendations");
+                
+                double estimatedTotal = mlRecs.stream()
+                        .mapToDouble(FoodItem::getPrice)
+                        .sum();
+                
+                String reasoning = "ML-based personalized recommendations based on your order history and similar users' preferences.";
+                return new RecommendationResponse(mlRecs, reasoning, estimatedTotal);
+            }
+        } else {
+            System.out.println("Falling back to AI/Mock recommendations for user: " + userId);
+        }
 
         String prompt = buildPrompt(prefs, availableItems);
         String aiResponse;
 
-        if (apiKey != null && !apiKey.isEmpty()) {
+        if (geminiService.isAvailable()) {
+            aiResponse = callGemini(prompt);
+        } else if (apiKey != null && !apiKey.isEmpty()) {
             aiResponse = callOpenAI(prompt);
         } else {
             aiResponse = mockAIResponse(prefs, availableItems);
@@ -72,6 +102,35 @@ public class FoodRecommendationService {
                 .sum();
 
         return new RecommendationResponse(recommendedItems, aiResponse, estimatedTotal);
+    }
+    
+    private List<FoodItem> applyUserFilters(List<FoodItem> items, UserPreferences prefs) {
+        return items.stream()
+            .filter(item -> {
+                if (prefs.getBudgetMax() != null && item.getPrice() > prefs.getBudgetMax()) {
+                    return false;
+                }
+                if (prefs.getDietaryPreference() != null) {
+                    String dietPref = prefs.getDietaryPreference().toLowerCase();
+                    if (dietPref.contains("vegan") && !item.isVegan()) {
+                        return false;
+                    }
+                    if (dietPref.contains("vegetarian") && !item.isVegetarian()) {
+                        return false;
+                    }
+                }
+                if (prefs.getAllergens() != null && item.getAllergens() != null) {
+                    for (String allergen : item.getAllergens()) {
+                        if (prefs.getAllergens().stream()
+                            .anyMatch(a -> a.equalsIgnoreCase(allergen))) {
+                            return false;
+                        }
+                    }
+                }
+                return true;
+            })
+            .limit(3)
+            .collect(Collectors.toList());
     }
 
     private String buildPrompt(UserPreferences prefs, List<FoodItem> availableItems) {
@@ -145,25 +204,133 @@ public class FoodRecommendationService {
         }
     }
 
+    private String callGemini(String prompt) {
+        try {
+            String response = geminiService.generateContent(prompt);
+            if (response != null && !response.isEmpty()) {
+                return response;
+            }
+            return mockAIResponse(null, foodItemRepository.findAll());
+        } catch (Exception e) {
+            return mockAIResponse(null, foodItemRepository.findAll());
+        }
+    }
+
     private String mockAIResponse(UserPreferences prefs, List<FoodItem> availableItems) {
         StringBuilder response = new StringBuilder();
-        List<Long> recommendedIds = new ArrayList<>();
+        List<FoodItem> filteredItems = new ArrayList<>(availableItems);
         
-        if (prefs != null && "vegetarian".equalsIgnoreCase(prefs.getDietaryPreference())) {
-            for (FoodItem item : availableItems) {
-                if (item.isVegetarian() && recommendedIds.size() < 3) {
-                    recommendedIds.add(item.getId());
+        if (prefs != null) {
+            if (prefs.getDietaryPreference() != null) {
+                String dietPref = prefs.getDietaryPreference().toLowerCase();
+                filteredItems = filteredItems.stream()
+                    .filter(item -> {
+                        if (dietPref.contains("vegan")) {
+                            return item.isVegan();
+                        } else if (dietPref.contains("vegetarian")) {
+                            return item.isVegetarian();
+                        }
+                        return true;
+                    })
+                    .collect(Collectors.toList());
+            }
+            
+            if (prefs.getBudgetMax() != null) {
+                filteredItems = filteredItems.stream()
+                    .filter(item -> item.getPrice() <= prefs.getBudgetMax())
+                    .collect(Collectors.toList());
+            }
+            
+            if (prefs.getBudgetMin() != null) {
+                filteredItems = filteredItems.stream()
+                    .filter(item -> item.getPrice() >= prefs.getBudgetMin())
+                    .collect(Collectors.toList());
+            }
+            
+            if (prefs.getAllergens() != null && !prefs.getAllergens().isEmpty()) {
+                filteredItems = filteredItems.stream()
+                    .filter(item -> {
+                        if (item.getAllergens() == null) return true;
+                        for (String allergen : item.getAllergens()) {
+                            if (prefs.getAllergens().stream()
+                                .anyMatch(a -> a.equalsIgnoreCase(allergen))) {
+                                return false;
+                            }
+                        }
+                        return true;
+                    })
+                    .collect(Collectors.toList());
+            }
+            
+            if (prefs.getPreferredCuisine() != null) {
+                List<FoodItem> cuisineMatches = filteredItems.stream()
+                    .filter(item -> item.getCategory() != null && 
+                           item.getCategory().toLowerCase().contains(prefs.getPreferredCuisine().toLowerCase()))
+                    .collect(Collectors.toList());
+                if (!cuisineMatches.isEmpty()) {
+                    filteredItems = cuisineMatches;
                 }
             }
-        } else if (prefs != null && prefs.getBudgetMax() != null) {
-            for (FoodItem item : availableItems) {
-                if (item.getPrice() <= prefs.getBudgetMax() && recommendedIds.size() < 3) {
-                    recommendedIds.add(item.getId());
+        }
+        
+        List<Long> recommendedIds = filteredItems.stream()
+                .limit(3)
+                .map(FoodItem::getId)
+                .collect(Collectors.toList());
+        
+        if (recommendedIds.isEmpty() && prefs != null) {
+            List<FoodItem> partialMatch = new ArrayList<>(availableItems);
+            
+            if (prefs.getDietaryPreference() != null) {
+                String dietPref = prefs.getDietaryPreference().toLowerCase();
+                List<FoodItem> dietMatches = partialMatch.stream()
+                    .filter(item -> {
+                        if (dietPref.contains("vegan")) return item.isVegan();
+                        if (dietPref.contains("vegetarian")) return item.isVegetarian();
+                        return true;
+                    })
+                    .collect(Collectors.toList());
+                if (!dietMatches.isEmpty()) {
+                    partialMatch = dietMatches;
                 }
             }
-        } else {
-            recommendedIds = availableItems.stream()
+            
+            if (prefs.getBudgetMax() != null && !partialMatch.isEmpty()) {
+                List<FoodItem> budgetMatches = partialMatch.stream()
+                    .filter(item -> item.getPrice() <= prefs.getBudgetMax())
+                    .collect(Collectors.toList());
+                if (!budgetMatches.isEmpty()) {
+                    partialMatch = budgetMatches;
+                }
+            }
+            
+            if (prefs.getAllergens() != null && !prefs.getAllergens().isEmpty() && !partialMatch.isEmpty()) {
+                List<FoodItem> allergenSafe = partialMatch.stream()
+                    .filter(item -> {
+                        if (item.getAllergens() == null) return true;
+                        for (String allergen : item.getAllergens()) {
+                            if (prefs.getAllergens().stream()
+                                .anyMatch(a -> a.equalsIgnoreCase(allergen))) {
+                                return false;
+                            }
+                        }
+                        return true;
+                    })
+                    .collect(Collectors.toList());
+                if (!allergenSafe.isEmpty()) {
+                    partialMatch = allergenSafe;
+                }
+            }
+            
+            recommendedIds = partialMatch.stream()
                     .limit(3)
+                    .map(FoodItem::getId)
+                    .collect(Collectors.toList());
+        }
+        
+        if (recommendedIds.isEmpty()) {
+            recommendedIds = availableItems.stream()
+                    .limit(2)
                     .map(FoodItem::getId)
                     .collect(Collectors.toList());
         }

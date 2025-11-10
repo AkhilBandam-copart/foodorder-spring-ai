@@ -48,6 +48,9 @@ public class OrderService {
     @Autowired
     private FoodItemRepository foodItemRepository;
 
+    @Autowired
+    private InteractionTrackingService interactionTrackingService;
+
     public Order createOrder(OrderRequest request) {
         List<OrderItem> orderItems = new ArrayList<>();
         double totalAmount = 0.0;
@@ -87,7 +90,11 @@ public class OrderService {
         order.setStatus("CONFIRMED");
         order.setCreatedAt(LocalDateTime.now());
 
-        return orderRepository.save(order);
+        Order savedOrder = orderRepository.save(order);
+        
+        interactionTrackingService.trackOrder(request.getUserId(), request.getItems());
+        
+        return savedOrder;
     }
 
     public Optional<Order> getOrderById(Long orderId) {
